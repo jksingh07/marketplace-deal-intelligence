@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "stage7_price_intel.schema.json",
+  "title": "Stage 7 - Price & Deal Intelligence Output Schema (Stub)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["listing_id", "source_snapshot_id", "created_at", "stage_name", "stage_version", "payload"],
+  "properties": {
+    "listing_id": { "type": "string" },
+    "source_snapshot_id": { "type": "string" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "stage_name": { "type": "string", "const": "stage7_price_intelligence" },
+    "stage_version": { "type": "string" },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "estimated_market_price_p25",
+        "estimated_market_price_p50",
+        "estimated_market_price_p75",
+        "asking_price",
+        "deal_delta",
+        "deal_rating",
+        "comps_used_count",
+        "comps_listing_ids",
+        "confidence",
+        "explanation"
+      ],
+      "properties": {
+        "estimated_market_price_p25": { "type": "number" },
+        "estimated_market_price_p50": { "type": "number" },
+        "estimated_market_price_p75": { "type": "number" },
+        "asking_price": { "type": "number" },
+        "deal_delta": { "type": "number" },
+        "deal_rating": { "type": "string", "enum": ["bargain", "fair", "overpriced", "unknown"] },
+        "comps_used_count": { "type": "integer", "minimum": 0 },
+        "comps_listing_ids": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "explanation": { "type": "array", "items": { "type": "string" }, "default": [] }
+      }
+    }
+  }
+}

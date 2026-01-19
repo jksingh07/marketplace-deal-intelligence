@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "stage8_alternatives.schema.json",
+  "title": "Stage 8 - Alternatives Output Schema (Stub)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["listing_id", "source_snapshot_id", "created_at", "stage_name", "stage_version", "payload"],
+  "properties": {
+    "listing_id": { "type": "string" },
+    "source_snapshot_id": { "type": "string" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "stage_name": { "type": "string", "const": "stage8_alternatives" },
+    "stage_version": { "type": "string" },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["better_alternatives_found", "alternatives"],
+      "properties": {
+        "better_alternatives_found": { "type": "boolean" },
+        "alternatives": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["listing_id", "value_score", "why_better"],
+            "properties": {
+              "listing_id": { "type": "string" },
+              "value_score": { "type": "number" },
+              "why_better": { "type": "array", "items": { "type": "string" }, "default": [] }
+            }
+          }
+        }
+      }
+    }
+  }
+}
