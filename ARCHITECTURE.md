@@ -11,6 +11,7 @@ Stage 4 Description Intelligence is a **LLM-primary extraction pipeline with det
 3. **Evidence is Required** - Every signal must be traceable to source text
 4. **Schema-Valid Always** - Outputs always conform to JSON Schema contract
 5. **Idempotent by Design** - Same inputs produce identical outputs
+6. **Resilient by Design** - Unknown LLM outputs map to `"other"` instead of failing (prevents data loss)
 
 ---
 
@@ -399,7 +400,15 @@ Prevents drift between schema and code.
 ### 2. Signal Normalizer (`stage4/normalizer.py`)
 
 Gracefully handles LLM output variations by mapping common alternatives to valid schema values.
-Examples: `"write_off"` → `"writeoff"`, `"service_history"` → `"logbook"`
+**Key Design Principle**: Unknown types map to `"other"` instead of being rejected, ensuring no data loss.
+
+**Examples:**
+- `"write_off"` → `"writeoff"`
+- `"service_history"` → `"logbook"`
+- `"service_history_none"` → `"service_history_unknown"`
+- `"rwc_status_unknown"` → `"other"` (preserved, not rejected)
+
+**Architectural Benefit**: Makes the system resilient to LLM variations without breaking production.
 
 ### 3. Structured Logging (`common/logging_config.py`)
 
@@ -448,12 +457,64 @@ Non-blocking LLM extraction for concurrent processing:
 
 ---
 
-## Future Enhancements
+## Resilient Design Pattern
 
-1. **OpenAI Structured Outputs:** Use strict JSON schema mode (pending API availability)
-2. **A/B Testing:** Compare LLM models for quality
-3. **Distributed Caching:** Redis integration for multi-instance deployments
-4. **Prompt Versioning:** Track prompt versions for reproducibility
+### Problem Solved
+
+**Original Issue**: LLMs are probabilistic and produce variations. Strict enum validation caused:
+- Validation failures on unknown types
+- Data loss when LLM used valid semantic variations
+- Production instability with new LLM outputs
+- Rigid system that broke on edge cases
+
+### Solution: "Other" Fallback Pattern
+
+**All enum types include `"other"` as a valid value:**
+- `signal_legality_type`: includes `"other"`
+- `signal_accident_type`: includes `"other"`
+- `signal_mechanical_type`: includes `"other"`
+- `maintenance_claim_type`: includes `"other"`
+- `maintenance_red_flag_type`: includes `"other"`
+- `missing_info`: includes `"other"`
+
+**Normalization Layer:**
+- Maps known variations to valid types (e.g., `"write_off"` → `"writeoff"`)
+- Maps unknown types to `"other"` instead of rejecting
+- Preserves all valid semantic content from LLM
+
+**Result**: 
+- ✅ No data loss from LLM variations
+- ✅ Production stability with unexpected inputs
+- ✅ Graceful degradation without breaking
+- ✅ System handles any LLM output
+
+**Trade-off**: Some signals may be categorized as `"other"`, but this is preferable to losing all information.
+
+---
+
+## Current Implementation Status
+
+### ✅ Completed
+
+1. **JSON Mode**: Using OpenAI JSON mode for structured responses
+2. **Async Support**: Async LLM extraction for concurrent processing
+3. **Structured Logging**: JSON logs for production environments
+4. **Metrics Collection**: Thread-safe metrics for monitoring
+5. **Rate Limiting**: Token bucket rate limiter
+6. **Circuit Breaker**: Failure handling with state machine
+7. **Result Caching**: LRU cache with TTL
+8. **Input Validation**: Sanitization and validation
+9. **Resilient Normalization**: Unknown types → "other" pattern
+10. **Centralized Enums**: Single source of truth from schema
+
+### 🚧 Future Enhancements
+
+1. **OpenAI Structured Outputs (Strict)**: Use strict JSON schema mode when available
+2. **A/B Testing**: Compare LLM models for quality
+3. **Distributed Caching**: Redis integration for multi-instance deployments
+4. **Prompt Versioning**: Track prompt versions for reproducibility
+5. **Model Fallback Chain**: Automatic fallback to cheaper models on errors
+6. **Batch Optimization**: Optimize token usage with batching strategies
 
 ---
 

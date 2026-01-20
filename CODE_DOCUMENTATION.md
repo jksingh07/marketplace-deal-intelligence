@@ -6,16 +6,27 @@
 src/
 ├── __init__.py                 # Package initialization
 ├── config.py                   # Configuration and settings
-├── common/
+├── common/                     # Shared utilities and infrastructure
 │   ├── __init__.py            # Common package exports
-│   └── models.py              # Pydantic models and enums
-└── stage4/
+│   ├── models.py              # Pydantic models and enums
+│   ├── schema_enums.py        # Centralized enum definitions (single source of truth)
+│   ├── normalizer.py          # Value normalization (handles LLM variations)
+│   ├── logging_config.py      # Structured logging configuration
+│   ├── metrics.py             # Metrics collection for monitoring
+│   ├── rate_limiter.py        # API rate limiting (token bucket)
+│   ├── circuit_breaker.py     # Failure handling (circuit breaker pattern)
+│   ├── caching.py             # Result caching (LRU with TTL)
+│   └── input_validation.py    # Input sanitization and validation
+└── stage4/                     # Stage 4 implementation
     ├── __init__.py            # Stage 4 package exports
     ├── runner.py              # Main pipeline orchestrator
     ├── text_prep.py           # Text normalization and preparation
-    ├── llm_extractor.py       # OpenAI API integration
+    ├── llm_extractor.py       # OpenAI API integration (synchronous)
+    ├── llm_extractor_async.py # OpenAI API integration (asynchronous)
+    ├── extraction_schema.py   # JSON schema for structured outputs
     ├── evidence_verifier.py   # Evidence validation
     ├── guardrails.py          # Rule-based signal detection
+    ├── normalizer.py          # Signal normalization (maps unknown types → "other")
     ├── merger.py              # Signal merging and deduplication
     ├── derived_fields.py      # Summary field computation
     └── schema_validator.py    # JSON Schema validation
@@ -496,6 +507,406 @@ def load_schema() -> Dict:
 - Nested structures match schema
 
 **Error Messages:** Include field paths for debugging (e.g., `payload.signals.legality[0].confidence`).
+
+---
+
+### `src/common/schema_enums.py`
+
+**Purpose:** Single source of truth for all enum definitions, loaded dynamically from JSON schema.
+
+**Key Functions:**
+
+```python
+def get_all_signal_types() -> Dict[str, Set[str]]:
+    """Get all signal types organized by category."""
+
+def is_valid_signal_type(signal_type: str, category: str) -> bool:
+    """Check if signal type is valid for given category."""
+
+def get_evidence_present_types() -> Set[str]:
+    """Get valid evidence_present enum values."""
+
+def get_maintenance_claim_types() -> Set[str]:
+    """Get valid maintenance claim types."""
+```
+
+**Design:** Dynamically loads enums from JSON schema at runtime, ensuring schema and code never drift. All enum validation should import from this module.
+
+---
+
+### `src/stage4/normalizer.py` and `src/common/normalizer.py`
+
+**Purpose:** Centralized value normalization - handles LLM output variations gracefully.
+
+**Key Feature:** **Resilient Design** - Unknown types map to `"other"` instead of being rejected.
+
+**Functions:**
+
+```python
+def normalize_signal_type(signal_type: str, category: str) -> str:
+    """
+    Normalize signal type to valid schema value.
+    
+    NEVER returns None - unknown types → "other"
+    This ensures we never lose valid semantic content.
+    """
+
+def normalize_evidence_present(value: Any) -> str:
+    """
+    Normalize evidence_present value.
+    
+    NEVER returns None - unknown values → "other"
+    """
+
+def normalize_missing_info_list(missing_list: List[str]) -> List[str]:
+    """
+    Normalize missing_info values.
+    
+    Unknown types → "other" (preserved, not rejected)
+    """
+
+def normalize_maintenance(maintenance: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Normalize entire maintenance section.
+    
+    Invalid claim types → "other"
+    Invalid red flag types → "other"
+    Only filters out items without evidence_text
+    """
+```
+
+**Value Mapping:** Includes mappings for common LLM variations:
+- `"write_off"` → `"writeoff"`
+- `"service_history"` → `"logbook"`
+- `"service_history_none"` → `"service_history_unknown"`
+- Unknown types → `"other"`
+
+**Design Philosophy:** Preserve all valid semantic content from LLM, map variations to schema values, use "other" as safe fallback.
+
+---
+
+### `src/stage4/llm_extractor_async.py`
+
+**Purpose:** Asynchronous LLM extraction for concurrent processing.
+
+**Functions:**
+
+```python
+async def extract_with_llm_async(
+    listing_id: str,
+    source_snapshot_id: str,
+    title: str,
+    description: str,
+    vehicle_type: str = "unknown",
+    price: Optional[float] = None,
+    mileage: Optional[int] = None,
+    model: str = DEFAULT_MODEL,
+) -> Dict[str, Any]:
+    """Async version of extract_with_llm - non-blocking."""
+
+async def extract_batch_async(
+    listings: List[Dict[str, Any]],
+    model: str = DEFAULT_MODEL,
+    max_concurrent: int = 5,
+) -> List[Dict[str, Any]]:
+    """
+    Extract from multiple listings concurrently.
+    
+    Uses semaphore to limit concurrent API calls.
+    """
+```
+
+**Usage:** For batch processing and scalable concurrent operations.
+
+---
+
+### `src/stage4/extraction_schema.py`
+
+**Purpose:** Defines JSON schema for OpenAI Structured Outputs.
+
+**Functions:**
+
+```python
+def get_extraction_schema_for_openai() -> Dict[str, Any]:
+    """
+    Get extraction schema formatted for OpenAI Structured Outputs.
+    
+    Returns schema compatible with OpenAI's json_object mode.
+    """
+```
+
+**Note:** Currently uses JSON mode. Structured Outputs (strict schema) can be enabled when available in OpenAI API.
+
+---
+
+### `src/common/logging_config.py`
+
+**Purpose:** Structured logging configuration for production environments.
+
+**Classes:**
+
+```python
+class StructuredFormatter(logging.Formatter):
+    """JSON-structured log formatter for production."""
+
+class HumanReadableFormatter(logging.Formatter):
+    """Human-readable formatter for development."""
+
+class LoggerWithContext:
+    """Logger wrapper that includes context in all messages."""
+```
+
+**Functions:**
+
+```python
+def setup_logging(
+    level: str = "INFO",
+    structured: bool = False,
+    log_file: Optional[str] = None,
+) -> None:
+    """Configure logging for the application."""
+
+def get_logger(name: str) -> LoggerWithContext:
+    """Get a logger with context support."""
+```
+
+**Usage:**
+- Development: Human-readable format
+- Production: JSON format for log aggregators (Datadog, Splunk, etc.)
+
+---
+
+### `src/common/metrics.py`
+
+**Purpose:** Thread-safe metrics collection for monitoring.
+
+**Classes:**
+
+```python
+class MetricsCollector:
+    """Collects and stores metrics for pipeline monitoring."""
+```
+
+**Key Methods:**
+
+```python
+def increment(name: str, value: float = 1.0, tags: Dict[str, str] = None):
+    """Increment a counter metric."""
+
+def gauge(name: str, value: float, tags: Dict[str, str] = None):
+    """Set a gauge metric (point-in-time value)."""
+
+def histogram(name: str, value: float, tags: Dict[str, str] = None):
+    """Record a histogram value (for distributions)."""
+
+def timing(name: str, value_ms: float, tags: Dict[str, str] = None):
+    """Record a timing metric (latency)."""
+
+@contextmanager
+def timer(name: str, tags: Dict[str, str] = None):
+    """Context manager for timing code blocks."""
+```
+
+**Stage 4 Metrics:**
+
+```python
+def record_extraction_metrics(
+    listing_id: str,
+    llm_used: bool,
+    llm_latency_ms: Optional[float] = None,
+    tokens_used: Optional[int] = None,
+    signals_extracted: int = 0,
+    validation_passed: bool = True,
+):
+    """Record metrics for a single extraction."""
+
+def record_signal_metrics(
+    category: str,
+    signal_type: str,
+    severity: str,
+    verification_level: str,
+):
+    """Record metrics for a detected signal."""
+```
+
+**Integration:** Ready for Prometheus/DataDog integration.
+
+---
+
+### `src/common/rate_limiter.py`
+
+**Purpose:** Token bucket rate limiter for API calls.
+
+**Classes:**
+
+```python
+class RateLimiter:
+    """Token bucket rate limiter for API calls."""
+```
+
+**Usage:**
+
+```python
+limiter = get_openai_rate_limiter()
+
+# Sync
+with limiter.limit():
+    call_api()
+
+# Async
+async with limiter.limit_async():
+    await call_api()
+```
+
+**Configuration:**
+
+```python
+configure_openai_rate_limit(
+    calls_per_minute: int = 60,
+    burst_limit: int = 10,
+)
+```
+
+**Features:** Token bucket algorithm, configurable rate and burst limits, thread-safe.
+
+---
+
+### `src/common/circuit_breaker.py`
+
+**Purpose:** Circuit breaker pattern for preventing cascading failures.
+
+**States:**
+- **CLOSED**: Normal operation, calls pass through
+- **OPEN**: Service failing, calls rejected immediately
+- **HALF_OPEN**: Testing recovery, limited calls allowed
+
+**Classes:**
+
+```python
+class CircuitBreaker:
+    """
+    Circuit breaker for external service calls.
+    
+    Prevents cascading failures when services are down.
+    """
+```
+
+**Usage:**
+
+```python
+breaker = get_openai_circuit_breaker()
+
+# Sync
+with breaker.call():
+    result = call_openai()
+
+# Async
+async with breaker.call_async():
+    result = await call_openai()
+```
+
+**Configuration:**
+- `failure_threshold`: Failures to trip circuit (default: 5)
+- `success_threshold`: Successes to close circuit (default: 2)
+- `timeout_seconds`: Time before attempting recovery (default: 60s)
+
+---
+
+### `src/common/caching.py`
+
+**Purpose:** LRU cache with TTL support for expensive operations.
+
+**Classes:**
+
+```python
+class LRUCache:
+    """
+    Thread-safe LRU cache with TTL support.
+    
+    Features:
+    - LRU eviction when max size reached
+    - TTL-based expiration
+    - Thread-safe operations
+    - Stats tracking
+    """
+```
+
+**Global Caches:**
+
+```python
+def get_guardrails_cache() -> LRUCache:
+    """Get guardrails result cache (24hr TTL, deterministic)."""
+
+def get_llm_cache() -> LRUCache:
+    """Get LLM result cache (1hr TTL)."""
+```
+
+**Decorators:**
+
+```python
+@cached_guardrails
+def run_guardrails(prepared_text):
+    """Automatically cached - uses text hash as key."""
+
+@cached_llm_extraction
+def extract_with_llm(...):
+    """Automatically cached - uses title+description hash."""
+```
+
+**Stats:**
+
+```python
+def get_all_cache_stats() -> Dict[str, Any]:
+    """Get statistics for all caches (hits, misses, hit rate)."""
+```
+
+---
+
+### `src/common/input_validation.py`
+
+**Purpose:** Validates and sanitizes input before processing.
+
+**Classes:**
+
+```python
+class InputValidator:
+    """Validates listing input before pipeline processing."""
+
+@dataclass
+class ValidationResult:
+    """Result of input validation."""
+    is_valid: bool
+    errors: List[str]
+    warnings: List[str]
+    sanitized_input: Optional[Dict[str, Any]]
+```
+
+**Functions:**
+
+```python
+def validate_listing(listing: Dict[str, Any]) -> ValidationResult:
+    """
+    Validate a listing input.
+    
+    Checks:
+    - Required fields present
+    - Length limits (prevent DoS)
+    - Content sanitization
+    - Suspicious patterns
+    """
+```
+
+**Validation Rules:**
+- Max title length: 500 chars
+- Max description length: 10,000 chars
+- Min description length: 10 chars
+- Detects suspicious patterns (injection attempts, excessive repetition)
+
+**Sanitization:**
+- Removes null bytes
+- Normalizes whitespace
+- Removes control characters
+- Validates numeric fields (price, mileage)
 
 ---
 
