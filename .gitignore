@@ -173,6 +173,10 @@ tmp/
 temp/
 *.tmp
 
+# Metrics and usage tracking
+.metrics/
+*.metrics.json
+
 # OS files
 .DS_Store
 .AppleDouble

@@ -10,7 +10,8 @@ import time
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional, Dict, List
+from typing import Any, Optional, Dict, List, Tuple
+from dataclasses import dataclass
 
 from openai import OpenAI, APIError, APITimeoutError, RateLimitError
 
@@ -85,6 +86,15 @@ You MUST return valid JSON matching the extraction schema.
     return base_prompt + "\n---\n" + input_section
 
 
+@dataclass
+class TokenUsage:
+    """Token usage details from an API call."""
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    model: str
+
+
 def extract_with_llm(
     listing_id: str,
     source_snapshot_id: str,
@@ -95,7 +105,7 @@ def extract_with_llm(
     mileage: Optional[int] = None,
     model: str = DEFAULT_MODEL,
     use_structured_output: bool = True,
-) -> Dict[str, Any]:
+) -> Tuple[Dict[str, Any], Optional[TokenUsage]]:
     """
     Extract structured intelligence from listing using LLM.
     
@@ -111,7 +121,7 @@ def extract_with_llm(
         use_structured_output: Whether to use OpenAI Structured Outputs
         
     Returns:
-        Parsed extraction result or fallback structure on failure
+        Tuple of (parsed extraction result or fallback structure on failure, total tokens used or None)
     """
     logger.info(f"Starting LLM extraction for listing {listing_id}")
     start_time = time.time()
@@ -127,7 +137,7 @@ def extract_with_llm(
     )
     
     # Call OpenAI with retries
-    extraction_result = call_openai_with_retry(
+    extraction_result, token_usage = call_openai_with_retry(
         prompt=prompt,
         model=model,
         use_structured_output=use_structured_output,
@@ -145,7 +155,7 @@ def extract_with_llm(
             title=title,
             description=description,
             warning="LLM extraction failed after retries",
-        )
+        ), None
     
     # Build full output structure from extraction
     try:
@@ -157,7 +167,7 @@ def extract_with_llm(
             description=description,
             model=model,
         )
-        return result
+        return result, token_usage
         
     except Exception as e:
         logger.error(f"Error building output for listing {listing_id}: {e}")
@@ -167,7 +177,7 @@ def extract_with_llm(
             title=title,
             description=description,
             warning=f"Error processing LLM output: {str(e)}",
-        )
+        ), None
 
 
 def call_openai_with_retry(
@@ -175,7 +185,7 @@ def call_openai_with_retry(
     model: str,
     max_retries: int = MAX_RETRIES,
     use_structured_output: bool = True,
-) -> Optional[Dict[str, Any]]:
+) -> Tuple[Optional[Dict[str, Any]], Optional[TokenUsage]]:
     """
     Call OpenAI API with exponential backoff retry.
     
@@ -188,7 +198,7 @@ def call_openai_with_retry(
         use_structured_output: Whether to use JSON schema mode
         
     Returns:
-        Parsed response dict or None on failure
+        Tuple of (parsed response dict or None on failure, total tokens used or None)
     """
     client = OpenAI(api_key=get_openai_api_key())
     
@@ -229,16 +239,24 @@ def call_openai_with_retry(
             
             response_text = response.choices[0].message.content
             
-            # Log token usage
+            # Extract and log token usage
+            token_usage = None
             if response.usage:
+                token_usage = TokenUsage(
+                    prompt_tokens=response.usage.prompt_tokens,
+                    completion_tokens=response.usage.completion_tokens,
+                    total_tokens=response.usage.total_tokens,
+                    model=model
+                )
                 logger.info(
-                    f"Token usage: prompt={response.usage.prompt_tokens}, "
-                    f"completion={response.usage.completion_tokens}, "
-                    f"total={response.usage.total_tokens}"
+                    f"Token usage: prompt={token_usage.prompt_tokens}, "
+                    f"completion={token_usage.completion_tokens}, "
+                    f"total={token_usage.total_tokens}, model={model}"
                 )
             
             # Parse response
-            return parse_llm_response(response_text)
+            parsed_response = parse_llm_response(response_text)
+            return parsed_response, token_usage
             
         except RateLimitError as e:
             logger.warning(f"Rate limit error: {e}")
@@ -248,7 +266,7 @@ def call_openai_with_retry(
                 time.sleep(delay)
             else:
                 logger.error("Max retries exceeded due to rate limiting")
-                return None
+                return None, None
                 
         except (APIError, APITimeoutError) as e:
             logger.warning(f"API error: {e}")
@@ -258,7 +276,7 @@ def call_openai_with_retry(
                 time.sleep(delay)
             else:
                 logger.error(f"Max retries exceeded: {e}")
-                return None
+                return None, None
                 
         except json.JSONDecodeError as e:
             logger.error(f"JSON parse error: {e}")
@@ -266,13 +284,13 @@ def call_openai_with_retry(
                 delay = RETRY_DELAY_BASE * (2 ** attempt)
                 time.sleep(delay)
             else:
-                return None
+                return None, None
                 
         except Exception as e:
             logger.error(f"Unexpected error: {e}")
-            return None
+            return None, None
     
-    return None
+    return None, None
 
 
 def parse_llm_response(response_text: str) -> Dict[str, Any]:

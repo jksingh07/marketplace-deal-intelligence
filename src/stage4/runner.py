@@ -42,6 +42,9 @@ from common.metrics import (
     record_extraction_metrics,
     record_signal_metrics,
 )
+from common.cost_calculator import calculate_cost, format_cost, TokenUsage as CostTokenUsage
+from common.cost_tracker import record_token_usage
+from common.persistent_cost_tracker import record_usage_persistent
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -133,9 +136,10 @@ def run_stage4(
             warning="LLM skipped (skip_llm=True)",
         )
         llm_latency_ms = None
+        token_usage = None
     else:
         with timer("stage4.llm_extraction"):
-            llm_result = extract_with_llm(
+            llm_result, token_usage = extract_with_llm(
                 listing_id=listing_id,
                 source_snapshot_id=source_snapshot_id,
                 title=title,
@@ -147,6 +151,23 @@ def run_stage4(
             )
         llm_latency_ms = (time.time() - llm_start) * 1000
         logger.info(f"LLM extraction completed in {llm_latency_ms:.0f}ms")
+        
+        # Calculate cost if token usage is available
+        if token_usage:
+            cost, pricing_info = calculate_cost(
+                token_usage.prompt_tokens,
+                token_usage.completion_tokens,
+                token_usage.model
+            )
+            if pricing_info:
+                logger.info(
+                    f"API call cost: {format_cost(cost)} "
+                    f"(prompt: {format_cost(pricing_info['prompt_cost'])}, "
+                    f"completion: {format_cost(pricing_info['completion_cost'])})"
+                )
+            # Track cost in metrics
+            if cost > 0:
+                metrics.histogram("stage4.llm_cost_usd", cost, tags={"model": token_usage.model})
     
     # Step 3: Evidence verification
     with timer("stage4.evidence_verification"):
@@ -225,13 +246,33 @@ def run_stage4(
     total_time_ms = (time.time() - start_time) * 1000
     metrics.timing("stage4.pipeline_total", total_time_ms)
     
+    # Extract token info for metrics
+    tokens_used = token_usage.total_tokens if token_usage else None
+    
     record_extraction_metrics(
         listing_id=listing_id,
         llm_used=not skip_llm,
         llm_latency_ms=llm_latency_ms,
+        tokens_used=tokens_used,
         signals_extracted=total_signals,
         validation_passed=validation_passed,
     )
+    
+    # Store detailed token usage for cost calculation
+    if token_usage:
+        cost_token_usage = CostTokenUsage(
+            prompt_tokens=token_usage.prompt_tokens,
+            completion_tokens=token_usage.completion_tokens,
+            total_tokens=token_usage.total_tokens,
+            model=token_usage.model
+        )
+        # Record for in-memory cost tracking (current session)
+        record_token_usage(cost_token_usage)
+        # Record persistently (across all sessions)
+        record_usage_persistent(token_usage, listing_id=listing_id)
+        # Also store in metrics for compatibility
+        metrics.histogram("stage4.prompt_tokens", token_usage.prompt_tokens, tags={"model": token_usage.model})
+        metrics.histogram("stage4.completion_tokens", token_usage.completion_tokens, tags={"model": token_usage.model})
     
     logger.info(
         f"Stage 4 completed for {listing_id}: "
