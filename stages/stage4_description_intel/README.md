@@ -16,10 +16,11 @@ Extract structured signals from listing descriptions:
 ## Key Principles
 
 1. **LLM is the primary extractor** - Rules are guardrails, not the brain
-2. All signals must have evidence text spans
-3. High-risk signals (write-off, defect) are prioritized via guardrail rules
-4. Output must be schema-valid always
-5. Evidence verification prevents hallucinations
+2. **All signals must have evidence text spans** - Prevents hallucinations
+3. **High-risk signals prioritized** - Write-off, defect detected via guardrail rules first
+4. **Schema-valid always** - Outputs always conform to JSON Schema contract
+5. **Resilient by design** - Unknown LLM outputs map to `"other"` instead of failing
+6. **Idempotent** - Same inputs produce identical outputs
 
 ## Input Handling
 
