@@ -88,13 +88,13 @@ class PersistentCostTracker:
                 temp_path.replace(self.storage_path)
                 
                 logger.debug(f"Saved {len(self._records)} usage records to {self.storage_path}")
-                
-                # Auto-generate summary report
-                try:
-                    from common.usage_report_generator import generate_usage_report
-                    generate_usage_report()
-                except Exception as e:
-                    logger.debug(f"Failed to auto-generate usage report: {e}")
+            
+            # Auto-generate summary report
+            try:
+                from common.usage_report_generator import generate_usage_report
+                generate_usage_report()
+            except Exception as e:
+                logger.debug(f"Failed to auto-generate usage report: {e}")
         except Exception as e:
             logger.error(f"Failed to save usage history: {e}")
     
