@@ -27,6 +27,7 @@
       ],
       "properties": {
         "overall_score": { "type": "number", "minimum": 0, "maximum": 10 },
+        "flipability_score": { "type": "integer", "minimum": 0, "maximum": 100 },
         "verdict": { "type": "string" },
         "key_pros": { "type": "array", "items": { "type": "string" }, "default": [] },
         "key_cons": { "type": "array", "items": { "type": "string" }, "default": [] },

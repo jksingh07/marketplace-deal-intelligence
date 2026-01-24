@@ -42,6 +42,9 @@ This file tracks versions for all schema contracts and enum dictionaries used ac
 ### Stage 9 — Buyer-Ready Summary
 - Schema: `stage9_buyer_summary.schema.json` → **TBD**
 
+### Flipability Score
+- Schema: `flipability_score.schema.json` → **v1.0.0**
+
 ---
 
 ## Change Log

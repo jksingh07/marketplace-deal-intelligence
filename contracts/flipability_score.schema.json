@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "flipability_score.schema.json",
+  "title": "Flipability Score Output Schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "listing_id",
+    "source_snapshot_id",
+    "created_at",
+    "stage_name",
+    "stage_version",
+    "payload"
+  ],
+  "properties": {
+    "listing_id": { "type": "string", "minLength": 1 },
+    "source_snapshot_id": { "type": "string", "minLength": 1 },
+    "created_at": { "type": "string", "format": "date-time" },
+    "stage_name": {
+      "type": "string",
+      "const": "flipability_score"
+    },
+    "stage_version": { "type": "string", "minLength": 1 },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "flipability_score",
+        "components",
+        "dominant_factors",
+        "penalties_applied",
+        "inputs_used"
+      ],
+      "properties": {
+        "flipability_score": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "components": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "value_advantage_score",
+            "liquidity_score",
+            "risk_multiplier",
+            "confidence"
+          ],
+          "properties": {
+            "value_advantage_score": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "liquidity_score": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "risk_multiplier": {
+              "type": "number",
+              "minimum": 0.10,
+              "maximum": 1.00
+            },
+            "confidence": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          }
+        },
+        "dominant_factors": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "penalties_applied": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "type",
+              "severity",
+              "verification_level",
+              "multiplier",
+              "evidence_text"
+            ],
+            "properties": {
+              "type": { "type": "string" },
+              "severity": { "type": "string" },
+              "verification_level": { "type": "string" },
+              "multiplier": { "type": "number" },
+              "evidence_text": { "type": "string" }
+            }
+          }
+        },
+        "inputs_used": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "asking_price",
+            "market_p50",
+            "comps_used_count",
+            "risk_level_overall"
+          ],
+          "properties": {
+            "asking_price": { "type": ["number", "null"] },
+            "market_p50": { "type": ["number", "null"] },
+            "comps_used_count": { "type": "integer" },
+            "risk_level_overall": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}
