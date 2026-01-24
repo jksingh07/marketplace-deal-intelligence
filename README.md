@@ -9,7 +9,7 @@ This repository implements **Stages 4-9** of the deal intelligence pipeline, whi
 The AI pipeline converts raw listing data into actionable intelligence:
 
 - **Stage 4:** Description Intelligence — Extract structured signals from listing text (✅ **Production-Ready**)
-- **Stage 7:** Price Intelligence — Estimate fair market value and deal quality (Planned)
+- **Stage 7:** Price Intelligence — Estimate fair market value and deal quality (✅ **MVP Implemented**)
 - **Stage 8:** Alternatives — Find better or similar options (Planned)
 - **Stage 9:** Buyer Summary — Generate user-facing recommendations (Planned)
 
@@ -27,20 +27,26 @@ The AI pipeline converts raw listing data into actionable intelligence:
 ✅ **Circuit Breaker** - Prevents cascading failures  
 ✅ **Result Caching** - Optimizes repeated processing  
 ✅ **Input Validation** - Sanitizes and validates inputs  
+✅ **API Server** - FastAPI implementation for easy integration
 
 ### Intelligent Extraction
 
 - **Evidence-Based** - Every signal is backed by verbatim source text
 - **Dual-Mode Detection** - Deterministic rules (guaranteed) + AI (comprehensive)
 - **Risk Scoring** - Automatic risk assessment (low/medium/high)
+- **Flipability Score** - Estimates profit potential (0-100)
+- **LLM Pricing** - AI-powered market value estimation
 - **Schema-Validated** - All outputs conform to JSON Schema contracts
 
 ## Repository Structure
 
 ```
 .
-├── src/                       # Source code
+├── app.py                    # FastAPI Server
+├── src/                      # Source code
 │   ├── common/               # Shared utilities
+│   │   ├── scoring/          # Scoring logic
+│   │   │   └── flipability.py # Flipability Score calculator
 │   │   ├── schema_enums.py   # Centralized enum definitions
 │   │   ├── normalizer.py     # Value normalization
 │   │   ├── logging_config.py # Structured logging
@@ -50,17 +56,19 @@ The AI pipeline converts raw listing data into actionable intelligence:
 │   │   ├── caching.py        # Result caching
 │   │   ├── input_validation.py # Input sanitization
 │   │   └── models.py         # Pydantic models
-│   └── stage4/               # Stage 4 implementation
-│       ├── runner.py         # Pipeline orchestrator
-│       ├── text_prep.py      # Text normalization
-│       ├── llm_extractor.py  # LLM integration (sync)
-│       ├── llm_extractor_async.py # LLM integration (async)
-│       ├── guardrails.py     # Rule-based detection
-│       ├── evidence_verifier.py # Evidence validation
-│       ├── normalizer.py     # Signal normalization
-│       ├── merger.py         # Signal merging
-│       ├── derived_fields.py # Risk calculation
-│       └── schema_validator.py # Output validation
+│   ├── stage4/               # Stage 4 implementation
+│   │   ├── runner.py         # Pipeline orchestrator
+│   │   ├── text_prep.py      # Text normalization
+│   │   ├── llm_extractor.py  # LLM integration (sync)
+│   │   ├── llm_extractor_async.py # LLM integration (async)
+│   │   ├── guardrails.py     # Rule-based detection
+│   │   ├── evidence_verifier.py # Evidence validation
+│   │   ├── normalizer.py     # Signal normalization
+│   │   ├── merger.py         # Signal merging
+│   │   ├── derived_fields.py # Risk calculation
+│   │   └── schema_validator.py # Output validation
+│   └── stage7/               # Stage 7 implementation
+│       └── llm_pricer.py     # LLM Market Pricing
 ├── contracts/                # JSON Schema contracts
 ├── stages/                   # Stage-specific docs/rules
 ├── docs/                     # Documentation
@@ -84,13 +92,20 @@ See `/docs/REPO_STRUCTURE_AI.md` and `/REPO_STRUCTURE.md` for detailed structure
    pip install -r requirements.txt
    ```
 
-2. **Run the pipeline:**
+2. **Run the API Server:**
+   ```bash
+   python3 app.py
+   ```
+   The server will start at `http://0.0.0.0:8000`.
+   Open `http://localhost:8000/docs` to explore the API.
+
+3. **Run the pipeline (CLI):**
    ```bash
    python3 quick_test.py
    ```
    This runs with guardrails-only mode (no API key required).
 
-3. **Run with LLM (optional):**
+4. **Run with LLM (optional):**
    ```bash
    # Create .env file in project root
    echo "OPENAI_API_KEY=your-key-here" > .env
@@ -99,17 +114,23 @@ See `/docs/REPO_STRUCTURE_AI.md` and `/REPO_STRUCTURE.md` for detailed structure
    python3 quick_test.py
    ```
 
-4. **Run tests:**
+5. **Run tests:**
    ```bash
    pytest tests/ -v
    # All 66 tests should pass
    ```
 
-5. **Explore the notebook:**
+6. **Explore the notebook:**
    ```bash
-   jupyter notebook notebooks/stage4_poc.ipynb
+   jupyter notebook notebooks/stage4_poc_with_flipability.ipynb
    ```
-   Investor-friendly demo with detailed explanations.
+   Investor-friendly demo with detailed explanations and Flipability Score.
+
+## API Endpoints
+
+- **`POST /evaluate`** - Full pipeline: Analysis + Pricing + Flipability Score
+- **`POST /analyze`** - Stage 4 Analysis only (Risks, Signals)
+- **`POST /score`** - Calculate Flipability Score (requires inputs)
 
 ## Documentation
 
@@ -153,7 +174,11 @@ See `/docs/REPO_STRUCTURE_AI.md` and `/REPO_STRUCTURE.md` for detailed structure
 
 **See [`TESTING.md`](TESTING.md) for test details**
 
-### Stages 7-9: Planned
+### Stage 7: ✅ **MVP Implemented**
+- ✅ LLM-based Market Pricing
+- ✅ Flipability Score Calculation
+
+### Stages 8-9: Planned
 
 See individual stage READMEs in `/stages/` for implementation status.
 
